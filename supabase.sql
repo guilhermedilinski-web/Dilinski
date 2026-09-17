@@ -44,7 +44,15 @@ as $$
   select 'TROQUE-ESTA-SENHA'::text   -- <<<<<< TROQUE AQUI
 $$;
 
-revoke all on function public.senha_painel() from public;
+-- IMPORTANTE: o Supabase concede EXECUTE em funções do schema public para
+-- anon/authenticated por padrão, então revogar só de "public" não basta —
+-- sem as linhas abaixo, qualquer um com a chave anon lê a senha do painel.
+revoke all on function public.senha_painel() from public, anon, authenticated;
+
+-- Desliga a concessão automática para as funções criadas a seguir: cada uma
+-- recebe permissão explicitamente na seção 5. Vale para funções futuras
+-- também, então toda função nova neste schema precisa de GRANT explícito.
+alter default privileges in schema public revoke execute on functions from anon, authenticated;
 
 -- ---------------------------------------------------------------
 -- 3. Funções usadas pela página do cliente (públicas)

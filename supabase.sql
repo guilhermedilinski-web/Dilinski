@@ -140,6 +140,7 @@ set search_path = public
 as $$
 begin
   if p_senha is distinct from public.senha_painel() then
+    perform pg_sleep(1);  -- atrasa tentativa de forca bruta
     raise exception 'Senha invalida';
   end if;
 
@@ -171,6 +172,7 @@ declare
   v_id   uuid;
 begin
   if p_senha is distinct from public.senha_painel() then
+    perform pg_sleep(1);  -- atrasa tentativa de forca bruta
     raise exception 'Senha invalida';
   end if;
   if char_length(v_nome) < 2 or char_length(v_nome) > 80 then
@@ -190,6 +192,7 @@ set search_path = public
 as $$
 begin
   if p_senha is distinct from public.senha_painel() then
+    perform pg_sleep(1);  -- atrasa tentativa de forca bruta
     raise exception 'Senha invalida';
   end if;
   delete from public.clientes where id = p_id;
@@ -204,6 +207,7 @@ set search_path = public
 as $$
 begin
   if p_senha is distinct from public.senha_painel() then
+    perform pg_sleep(1);  -- atrasa tentativa de forca bruta
     raise exception 'Senha invalida';
   end if;
   delete from public.respostas where id = p_id;

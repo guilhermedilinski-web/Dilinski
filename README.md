@@ -31,6 +31,13 @@ A chave anon pode ficar visível no navegador: as tabelas estão bloqueadas por 
 e todo acesso passa pelas funções do `supabase.sql`, que validam o que entra e sai.
 Quem tiver a chave consegue apenas **enviar uma resposta** — não consegue listar nada sem a senha.
 
+> **Atenção: o repositório `Dilinski` é público.** Assim que você colar a chave anon no
+> `config.js` e der push, ela fica visível na internet. Isso é aceitável por design, mas
+> torna a senha do painel a sua única proteção. Então: **use uma senha longa e aleatória**
+> (20+ caracteres, tipo `Kx7#mQp2$vLr9!Tz4Wn8`), não uma palavra. As funções do painel já
+> esperam 1 segundo a cada tentativa errada, o que inviabiliza força bruta.
+> Se preferir, deixe o repositório privado em **Settings → General → Change visibility**.
+
 ## 3. Publicar na internet
 
 1. Acesse [app.netlify.com/drop](https://app.netlify.com/drop).

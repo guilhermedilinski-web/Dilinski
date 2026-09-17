@@ -1,0 +1,15 @@
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+
+# permite abrir o painel como /painel
+[[redirects]]
+  from = "/painel"
+  to = "/painel.html"
+  status = 200

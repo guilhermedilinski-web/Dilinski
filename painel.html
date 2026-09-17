@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Painel · Bússola do Cliente</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+</head>
+<body>
+
+<div class="shell shell-wide" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/dados.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var app = document.getElementById('app');
+  var sb = BC.cliente();
+  var CHAVE = 'bc_senha';
+
+  var st = { tela:'senha', senha:'', linhas:[], erro:'', verId:null, novoLink:'' };
+
+  try{ st.senha = sessionStorage.getItem(CHAVE) || ''; }catch(e){}
+
+  function linkCliente(id){
+    return location.origin + location.pathname.replace(/[^/]*$/, '') + 'index.html?c=' + id;
+  }
+  function topo(sub){ return BC.stripHTML() + BC.cabecalhoHTML(sub); }
+
+  function render(){
+    if(st.tela === 'config')     return telaConfig();
+    if(st.tela === 'senha')      return telaSenha();
+    if(st.tela === 'carregando') return telaCarregando();
+    if(st.tela === 'painel')     return telaPainel();
+    if(st.tela === 'perfil')     return telaPerfil();
+  }
+
+  function telaConfig(){
+    app.innerHTML = topo('configuração pendente') +
+      '<div class="card"><h2 style="margin:0 0 10px;font-size:1.2rem;">Falta conectar o banco</h2>' +
+      '<p class="lead">Abra <code>assets/config.js</code> e cole a URL e a chave anon do seu projeto Supabase. ' +
+      'O passo a passo está no <code>README.md</code>.</p></div>';
+  }
+
+  function telaCarregando(){
+    app.innerHTML = topo('carregando') + '<div class="card"><div class="spinner"></div></div>';
+  }
+
+  function telaSenha(){
+    app.innerHTML = topo('painel do assessor') +
+      '<div class="card">' +
+        '<h2 style="margin:0 0 16px;font-size:1.2rem;">Acesso ao painel</h2>' +
+        (st.erro ? '<p class="alert" style="margin-bottom:16px;">' + BC.esc(st.erro) + '</p>' : '') +
+        '<label for="senhaIn">Senha</label>' +
+        '<input id="senhaIn" type="password" autocomplete="current-password" placeholder="••••••••">' +
+        '<button class="btn btn-primary btn-block" id="entrar" style="margin-top:16px;">Entrar</button>' +
+      '</div>';
+
+    var input = document.getElementById('senhaIn');
+    function entrar(){
+      var v = (input.value || '').trim();
+      if(!v){ input.focus(); return; }
+      st.senha = v;
+      st.erro = '';
+      carregar();
+    }
+    document.getElementById('entrar').addEventListener('click', entrar);
+    input.addEventListener('keydown', function(e){ if(e.key === 'Enter') entrar(); });
+    input.focus();
+  }
+
+  function telaPainel(){
+    var respondidos = st.linhas.filter(function(l){ return l.respondido_em; }).length;
+
+    var lista = st.linhas.length === 0
+      ? '<div class="empty">Nenhum cliente ainda.<br>Cadastre abaixo quem vai receber o questionário.</div>'
+      : '<div id="lista">' + st.linhas.map(linhaHTML).join('') + '</div>';
+
+    app.innerHTML = topo('painel do assessor') +
+      '<div class="card">' +
+        '<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+          '<p class="eyebrow" style="margin:0;">Clientes · ' + respondidos + ' de ' + st.linhas.length + ' respondidos</p>' +
+          '<button class="btn btn-soft btn-sm" id="atualizar">Atualizar</button>' +
+        '</div>' +
+        lista +
+        '<hr class="sep">' +
+        '<label for="novoNome">Cadastrar cliente</label>' +
+        '<div class="row row-end">' +
+          '<div style="flex:1;min-width:190px;"><input id="novoNome" type="text" maxlength="60" placeholder="Ex.: Maria Fernandes"></div>' +
+          '<button class="btn btn-primary" id="cadastrar">Gerar link</button>' +
+        '</div>' +
+        (st.novoLink
+          ? '<div style="margin-top:16px;"><div class="link-box">' + BC.esc(st.novoLink) + '</div>' +
+            '<div class="row">' +
+              '<button class="btn btn-outline btn-sm" id="copiarNovo">Copiar link</button>' +
+              '<a class="btn btn-soft btn-sm" target="_blank" rel="noopener" href="' +
+                BC.whatsapp('Olá! Para eu te atender da melhor forma, responda este questionário rápido (3 minutos): ' + st.novoLink) +
+              '">Enviar por WhatsApp</a>' +
+            '</div></div>'
+          : '') +
+      '</div>' +
+      '<div class="foot"><button class="textlink" id="sair">Sair do painel</button></div>';
+
+    document.getElementById('atualizar').addEventListener('click', carregar);
+    document.getElementById('sair').addEventListener('click', function(){
+      try{ sessionStorage.removeItem(CHAVE); }catch(e){}
+      st.senha = ''; st.linhas = []; st.novoLink = '';
+      st.tela = 'senha'; render();
+    });
+
+    var nomeIn = document.getElementById('novoNome');
+    function cadastrar(){
+      var v = (nomeIn.value || '').trim();
+      if(v.length < 2){ BC.toast('Digite o nome do cliente'); nomeIn.focus(); return; }
+      var btn = document.getElementById('cadastrar');
+      btn.disabled = true;
+      sb.rpc('criar_cliente', { p_senha: st.senha, p_nome: v }).then(function(res){
+        btn.disabled = false;
+        if(res.error || !res.data){ BC.toast('Não foi possível cadastrar'); return; }
+        st.novoLink = linkCliente(res.data);
+        BC.toast('Cliente cadastrado');
+        carregar();
+      }).catch(function(){
+        btn.disabled = false;
+        BC.toast('Não foi possível cadastrar');
+      });
+    }
+    document.getElementById('cadastrar').addEventListener('click', cadastrar);
+    nomeIn.addEventListener('keydown', function(e){ if(e.key === 'Enter') cadastrar(); });
+
+    if(st.novoLink){
+      document.getElementById('copiarNovo').addEventListener('click', function(){
+        BC.copiar(st.novoLink, 'Link copiado');
+      });
+    }
+
+    var lst = document.getElementById('lista');
+    if(lst) lst.addEventListener('click', acaoLinha);
+  }
+
+  function linhaHTML(l){
+    var chip, acoes = '';
+    if(l.respondido_em && l.perfil){
+      var p = BC.PERFIS[l.perfil];
+      chip = '<span class="chip tinted c-' + l.perfil + '">' + p.label + '</span>';
+      acoes += '<button class="btn btn-soft btn-sm" data-act="ver" data-id="' + l.resposta_id + '">Ver perfil</button>';
+    } else {
+      chip = '<span class="chip chip-wait">Aguardando</span>';
+      acoes += '<button class="btn btn-soft btn-sm" data-act="link" data-id="' + l.cliente_id + '">Copiar link</button>';
+    }
+    var alvo = l.cliente_id
+      ? 'data-act="del-cliente" data-id="' + l.cliente_id + '"'
+      : 'data-act="del-resposta" data-id="' + l.resposta_id + '"';
+    acoes += '<button class="btn btn-del btn-sm" ' + alvo + ' aria-label="Remover">✕</button>';
+
+    var meta = l.respondido_em
+      ? 'respondeu em ' + BC.data(l.respondido_em)
+      : 'cadastrado em ' + BC.data(l.cadastrado_em);
+
+    return '<div class="client">' +
+      '<span class="avatar">' + BC.esc(BC.iniciais(l.nome)) + '</span>' +
+      '<span class="cinfo"><span class="cname">' + BC.esc(l.nome) + '</span>' +
+      '<span class="cmeta">' + meta + '</span></span>' +
+      chip + '<span class="cactions">' + acoes + '</span></div>';
+  }
+
+  function acaoLinha(e){
+    var btn = e.target.closest('button[data-act]');
+    if(!btn) return;
+    var act = btn.getAttribute('data-act');
+    var id = btn.getAttribute('data-id');
+
+    if(act === 'ver'){
+      st.verId = id;
+      st.tela = 'perfil'; render(); window.scrollTo(0,0);
+      return;
+    }
+    if(act === 'link'){
+      BC.copiar(linkCliente(id), 'Link copiado');
+      return;
+    }
+    if(act === 'del-cliente' || act === 'del-resposta'){
+      var fn = (act === 'del-cliente') ? 'excluir_cliente' : 'excluir_resposta';
+      if(!confirm('Remover este registro do painel?')) return;
+      sb.rpc(fn, { p_senha: st.senha, p_id: id }).then(function(res){
+        if(res.error){ BC.toast('Não foi possível remover'); return; }
+        BC.toast('Removido');
+        carregar();
+      }).catch(function(){ BC.toast('Não foi possível remover'); });
+    }
+  }
+
+  function telaPerfil(){
+    var l = st.linhas.find(function(x){ return String(x.resposta_id) === String(st.verId); });
+    if(!l || !l.scores){ st.tela = 'painel'; render(); return; }
+
+    var rk = BC.ranquear(l.scores);
+    var principal = rk[0][0];
+    var segundo = (rk[1] && rk[1][1] > 0) ? BC.PERFIS[rk[1][0]] : null;
+    var p = BC.PERFIS[principal];
+
+    app.innerHTML = topo('perfil do cliente') +
+      '<div class="card">' +
+        '<p class="eyebrow" style="margin-bottom:10px;">' + BC.esc(l.nome) +
+        ' · respondeu em ' + BC.data(l.respondido_em) + '</p>' +
+        BC.faixaTituloHTML(principal, 'Estilo predominante') +
+        '<p>' + BC.esc(p.descricao) + '</p>' +
+        BC.faixasHTML(l.scores) +
+        (segundo ? '<p class="small muted">Traço secundário: <strong style="color:var(--text)">' +
+          segundo.label + '</strong> — ' + BC.esc(segundo.tagline.toLowerCase()) + '.</p>' : '') +
+        '<hr class="sep">' +
+        BC.listaHTML('Como se comunicar com essa pessoa', p.comunicar) +
+        '<hr class="sep">' +
+        '<div class="grid2">' +
+          BC.listaHTML('Características', p.caracteristicas) +
+          BC.listaHTML('Evite', p.evitar) +
+        '</div>' +
+      '</div>' +
+      '<div class="foot"><button class="textlink" id="voltar">Voltar ao painel</button></div>';
+
+    document.getElementById('voltar').addEventListener('click', function(){
+      st.tela = 'painel'; render(); window.scrollTo(0,0);
+    });
+  }
+
+  function carregar(){
+    st.tela = 'carregando'; render();
+    sb.rpc('listar_painel', { p_senha: st.senha }).then(function(res){
+      if(res.error){
+        st.erro = 'Senha incorreta.';
+        st.senha = '';
+        try{ sessionStorage.removeItem(CHAVE); }catch(e){}
+        st.tela = 'senha'; render();
+        return;
+      }
+      try{ sessionStorage.setItem(CHAVE, st.senha); }catch(e){}
+      st.linhas = res.data || [];
+      st.erro = '';
+      st.tela = 'painel'; render();
+    }).catch(function(){
+      st.erro = 'Não foi possível conectar ao banco.';
+      st.tela = 'senha'; render();
+    });
+  }
+
+  // ---- início ----
+  if(!sb){ st.tela = 'config'; render(); return; }
+  if(st.senha){ carregar(); } else { render(); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Bússola do Cliente</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/estilo.css">
+</head>
+<body>
+
+<div class="shell" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/dados.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  var app = document.getElementById('app');
+  var sb = BC.cliente();
+  var TOTAL = BC.PERGUNTAS.length;
+
+  var st = {
+    tela: 'intro',
+    clienteId: new URLSearchParams(location.search).get('c') || null,
+    nome: '',
+    nomeTravado: false,
+    i: 0,
+    respostas: new Array(TOTAL).fill(null),
+    erro: ''
+  };
+
+  function topo(sub){ return BC.stripHTML() + BC.cabecalhoHTML(sub); }
+
+  function render(){
+    if(st.tela === 'config')    return telaConfig();
+    if(st.tela === 'carregando')return telaCarregando();
+    if(st.tela === 'intro')     return telaIntro();
+    if(st.tela === 'quiz')      return telaQuiz();
+    if(st.tela === 'enviando')  return telaEnviando();
+    if(st.tela === 'erro')      return telaErro();
+    if(st.tela === 'fim')       return telaFim();
+  }
+  function ir(tela){ st.tela = tela; render(); window.scrollTo(0,0); }
+
+  function telaConfig(){
+    app.innerHTML = topo('configuração pendente') +
+      '<div class="card"><h2 style="margin:0 0 10px;font-size:1.2rem;">Falta conectar o banco</h2>' +
+      '<p class="lead">Abra <code>assets/config.js</code> e cole a URL e a chave anon do seu projeto Supabase. ' +
+      'O passo a passo completo está no arquivo <code>README.md</code>.</p></div>';
+  }
+
+  function telaCarregando(){
+    app.innerHTML = topo('carregando') + '<div class="card"><div class="spinner"></div></div>';
+  }
+
+  function telaIntro(){
+    var saudacao = st.nomeTravado
+      ? '<h2 style="margin:0 0 10px;font-size:1.35rem;">Olá, ' + BC.esc(st.nome.split(' ')[0]) + '!</h2>'
+      : '<h2 style="margin:0 0 10px;font-size:1.35rem;">Como você gosta de ser atendido?</h2>';
+
+    var campoNome = st.nomeTravado ? '' :
+      '<div style="margin:22px 0 16px;"><label for="nomeIn">Seu nome</label>' +
+      '<input id="nomeIn" type="text" maxlength="60" placeholder="Nome e sobrenome" ' +
+      'value="' + BC.esc(st.nome) + '" autocomplete="name"></div>';
+
+    app.innerHTML = topo('questionário de estilo de comunicação') +
+      '<div class="card">' +
+        saudacao +
+        '<p class="lead">São ' + TOTAL + ' perguntas rápidas sobre o seu jeito de se comunicar e trabalhar. ' +
+        'Leva cerca de 3 minutos e não existe resposta certa ou errada.</p>' +
+        campoNome +
+        '<button class="btn btn-primary btn-block" id="iniciar"' + (st.nomeTravado ? ' style="margin-top:20px;"' : '') + '>Começar</button>' +
+        '<p class="note" style="margin-top:18px;">Suas respostas servem apenas para o seu assessor entender a melhor ' +
+        'forma de conversar com você. Não é análise de perfil de investidor e não influencia recomendações.</p>' +
+      '</div>';
+
+    var input = document.getElementById('nomeIn');
+    function iniciar(){
+      if(!st.nomeTravado){
+        var v = (input.value || '').trim();
+        if(v.length < 2){ BC.toast('Digite seu nome para começar'); input.focus(); return; }
+        st.nome = v;
+      }
+      st.i = 0;
+      st.respostas = new Array(TOTAL).fill(null);
+      ir('quiz');
+    }
+    document.getElementById('iniciar').addEventListener('click', iniciar);
+    if(input) input.addEventListener('keydown', function(e){ if(e.key === 'Enter') iniciar(); });
+  }
+
+  function telaQuiz(){
+    var i = st.i, p = BC.PERGUNTAS[i], ultima = (i === TOTAL - 1);
+    var segs = BC.PERGUNTAS.map(function(_, k){
+      return '<span class="' + (k <= i ? 'on' : '') + '"></span>';
+    }).join('');
+
+    app.innerHTML = topo(BC.esc(st.nome)) +
+      '<div class="segments">' + segs + '</div>' +
+      '<div class="card">' +
+        '<span class="step">Pergunta ' + (i+1) + ' de ' + TOTAL + '</span>' +
+        '<p class="qtext">' + BC.esc(p.q) + '</p>' +
+        p.o.map(function(o){
+          return '<button class="opt' + (st.respostas[i] === o[0] ? ' on' : '') + '" data-c="' + o[0] + '">' +
+            '<span class="dot"></span><span>' + BC.esc(o[1]) + '</span></button>';
+        }).join('') +
+        '<div class="qnav">' +
+          '<button class="btn btn-soft" id="voltar"' + (i === 0 ? ' disabled' : '') + '>Voltar</button>' +
+          '<button class="btn btn-primary" id="avancar"' + (st.respostas[i] ? '' : ' disabled') + '>' +
+          (ultima ? 'Finalizar' : 'Avançar') + '</button>' +
+        '</div>' +
+      '</div>';
+
+    Array.prototype.forEach.call(app.querySelectorAll('.opt'), function(b){
+      b.addEventListener('click', function(){
+        st.respostas[i] = b.getAttribute('data-c');
+        render();
+      });
+    });
+    document.getElementById('voltar').addEventListener('click', function(){
+      if(st.i > 0){ st.i--; render(); window.scrollTo(0,0); }
+    });
+    document.getElementById('avancar').addEventListener('click', function(){
+      if(!st.respostas[i]) return;
+      if(ultima){ enviar(); }
+      else { st.i++; render(); window.scrollTo(0,0); }
+    });
+  }
+
+  function telaEnviando(){
+    app.innerHTML = topo('enviando') +
+      '<div class="card center"><div class="spinner"></div>' +
+      '<p class="small muted" style="margin-top:14px;">Salvando suas respostas...</p></div>';
+  }
+
+  function telaErro(){
+    app.innerHTML = topo('erro ao enviar') +
+      '<div class="card">' +
+        '<p class="alert">' + BC.esc(st.erro || 'Não foi possível salvar suas respostas.') + '</p>' +
+        '<div class="row" style="margin-top:16px;">' +
+          '<button class="btn btn-primary" id="tentar">Tentar novamente</button>' +
+        '</div>' +
+      '</div>';
+    document.getElementById('tentar').addEventListener('click', enviar);
+  }
+
+  function telaFim(){
+    var scores = BC.calcularScores(st.respostas);
+    var topo1 = BC.ranquear(scores)[0][0];
+    var perfil = BC.PERFIS[topo1];
+
+    app.innerHTML = topo('resultado') +
+      '<div class="card">' +
+        BC.faixaTituloHTML(topo1, 'Seu estilo predominante') +
+        '<p>' + BC.esc(perfil.descricao) + '</p>' +
+        BC.faixasHTML(scores) +
+        BC.listaHTML('O que te descreve', perfil.caracteristicas) +
+      '</div>' +
+      '<div class="card card-tight center">' +
+        '<p class="small" style="margin:0;color:var(--ok);font-weight:500;">Tudo certo, ' +
+        BC.esc(st.nome.split(' ')[0]) + '! Seu resultado já foi enviado ao seu assessor.</p>' +
+        '<p class="small muted" style="margin-top:8px;">Você pode fechar esta página.</p>' +
+      '</div>';
+  }
+
+  function enviar(){
+    ir('enviando');
+    sb.rpc('enviar_resposta', {
+      p_cliente_id: st.clienteId,
+      p_nome: st.nome,
+      p_respostas: BC.letras(st.respostas)
+    }).then(function(res){
+      if(res.error){
+        st.erro = 'Não conseguimos salvar suas respostas agora. Verifique sua conexão e tente novamente.';
+        ir('erro');
+        return;
+      }
+      ir('fim');
+    }).catch(function(){
+      st.erro = 'Não conseguimos salvar suas respostas agora. Verifique sua conexão e tente novamente.';
+      ir('erro');
+    });
+  }
+
+  // ---- início ----
+  if(!sb){ ir('config'); return; }
+
+  if(st.clienteId){
+    ir('carregando');
+    sb.rpc('obter_cliente', { p_id: st.clienteId }).then(function(res){
+      if(!res.error && res.data){
+        st.nome = res.data;
+        st.nomeTravado = true;
+      } else {
+        st.clienteId = null;
+      }
+      ir('intro');
+    }).catch(function(){
+      st.clienteId = null;
+      ir('intro');
+    });
+  } else {
+    render();
+  }
+})();
+</script>
+</body>
+</html>
